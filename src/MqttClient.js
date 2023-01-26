@@ -59,12 +59,18 @@ class MqttClient extends EventEmitter {
             }
         }
     }
+    #want_close;
+    #reconnect_timer;
     mqtt_connect() {
         return new Promise(resolve => {
             if (this.#client) {
                 // console.log('[mqtt] connect using prev opts');
                 // re-established a severed connection
-                if (this.#client.connected) return;
+                if (this.#client.connected) {
+                    console.log('[mqtt] 🔌 already connected');
+                    return;
+                }
+                console.log('[mqtt] 🔌 reconnecting');
                 this.#client.reconnect();
                 return;
             }
@@ -102,7 +108,14 @@ class MqttClient extends EventEmitter {
 
             });
             this.#client.on('close', () => {
-                console.log('[mqtt] closed');
+                if (this.#want_close) {
+                    this.#want_close = false; // debounce this flag
+                    console.log('[mqtt] 🔌 connection closed on request');
+                    this.emit('mqtt-close');
+                }
+                else {
+                    this.#start_reconnect_timer();
+                }
                 this.emit('mqtt-close');
             });
             this.#client.on('message', (topic, message_buffer) => {
@@ -111,7 +124,16 @@ class MqttClient extends EventEmitter {
             });
         });
     }
+    #start_reconnect_timer() {
+        const reconnect_sec = 5;
+        console.log(`[mqtt]🔌  will reconnect in ${reconnect_sec} sec`);
+        setTimeout(() => {
+            console.log(`[mqtt] 🔌 reconnect timer time's up`);
+            this.mqtt_connect();
+        }, reconnect_sec * 1000);
+    }
     mqtt_close({force}) {
+        this.#want_close = true;
         return new Promise(resolve => {
             if (! this.#client) return resolve();
             this.#client.end(!! force, {}, () => {
