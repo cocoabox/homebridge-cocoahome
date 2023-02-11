@@ -2,6 +2,7 @@ const BaseAccessory = require('../base-accessory');
 
 //
 // irkit2mqtt National aircond with remote controller A75C3026
+// translates irkit mqtt mesasages into HAP appliance properties and vice versa
 //
 // status update: irkit2mqtt/AIRCOND_NAME
 // body :         {state:STATE_OBJ, model:"A75C3026", ...} where STATE_OBJ is the following
@@ -349,6 +350,7 @@ class NationalAircondAccessory extends BaseAccessory {
     };
 
     if ( msg?.state?.power === false ) {
+      set_hap_sw(false);
       set_hap_states('INACTIVE', 'INACTIVE', 'AUTO', 'OFF', 'OFF');
       //  ┏━━━━━━━━━━━━━┛
       // see : HeaterCooler : https://developers.homebridge.io/#/service/HeaterCooler
@@ -356,7 +358,6 @@ class NationalAircondAccessory extends BaseAccessory {
     } else {
       // 運転モード
       switch (msg?.state?.mode) {
-        case 'ion':
         case 'cool':
           set_hap_sw(false);
           set_hap_states('ACTIVE', 'COOLING', 'COOL', 'COOL', 'COOL');
@@ -371,6 +372,14 @@ class NationalAircondAccessory extends BaseAccessory {
         case 'dry':
           set_hap_sw(true);
           set_hap_states('INACTIVE', 'INACTIVE', 'AUTO', 'OFF', 'OFF');
+          break;
+        case 'auto':
+          set_hap_sw(false);
+          set_hap_states('ACTIVE',
+            'IDLE', // only accepts HEATING COOLING IDLE INACTIVE : https://developers.homebridge.io/#/characteristic/CurrentHeaterCoolerState
+            'AUTO',
+            'OFF', // only accepts HEATING and COOLING : https://developers.homebridge.io/#/characteristic/CurrentHeatingCoolingState
+            'AUTO');
           break;
         default:
           set_hap_sw(false);

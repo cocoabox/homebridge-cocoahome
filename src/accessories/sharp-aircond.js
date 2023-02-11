@@ -318,6 +318,11 @@ class SharpAircondAccessory extends BaseAccessory {
     this.say('❄️  aircond message received :', msg);
 
     const set_hap_states =
+      // hc_active = heater/cooler active
+      // hc_cur_state = heater/cooler current state
+      // hc_tar_state = heater/cooler target state
+      // th_cur_state = thermometer current state
+      // th_tar_state = thermometer target state
       (hc_active, hc_cur_state, hc_tar_state, th_cur_state, th_tar_state) => {
         this.say('set_hap_states :', {hc_active, hc_cur_state, hc_tar_state, th_cur_state, th_tar_state});
         this.#heater_cooler_service.updateCharacteristic(
@@ -354,6 +359,7 @@ class SharpAircondAccessory extends BaseAccessory {
     };
 
     if ( msg?.state?.power === false ) {
+      set_hap_sw(false, false);
       set_hap_states('INACTIVE', 'INACTIVE', 'AUTO', 'OFF', 'OFF');
       //  ┏━━━━━━━━━━━━━┛
       // see : HeaterCooler : https://developers.homebridge.io/#/service/HeaterCooler
