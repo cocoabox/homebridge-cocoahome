@@ -32,8 +32,8 @@ class SwitchbotTempSensorAccessory extends BaseAccessory {
   #humidity_sensor_service;
   #battery_service;
 
-  constructor(platform, accessory, homebridge_log, mqtt_client) {
-    super(platform, accessory, homebridge_log, mqtt_client);
+  constructor({platform, accessory, homebridge_log, mqtt_client}) {
+    super({platform, accessory, homebridge_log, mqtt_client});
 
     this.#accessory_info_service = this.accessory.getService(this.platform.Service.AccessoryInformation);
     this.#accessory_info_service

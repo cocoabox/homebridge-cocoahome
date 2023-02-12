@@ -3,6 +3,8 @@ const settings = require('./settings');
 const MqttClient = require('./MqttClient');
 const AccessoriesManager = require('./accessories-manager');
 const fs = require('fs');
+const object_path = require('object-path');
+const mqtt_match = require('mqtt-match');
 
 const wait_msec_after_publish = 1000;
 
@@ -50,9 +52,12 @@ class CocoaHomePlatform extends MqttClient {
     });
   }
 
+  #get_accessory_config(accessory_name) {
+    return this.config?.accessory_config?.[accessory_name] ?? {};
+  }
+
   #start_mqtt() {
-    const topic_prefixes = this.config.topic_prefixes ?? [];
-    const topics = topic_prefixes.map(p => `${p}/+`);
+    const topics = Array.isArray(this.config?.subscribe) ? this.config?.subscribe : [];
     this.log.info('subscribing to:', topics);
     this.incoming_topic_pattern = null;
     this.mqtt_subscribe(topics);
@@ -71,6 +76,19 @@ class CocoaHomePlatform extends MqttClient {
     });
   }
 
+  #send_aux_message(topic, message_obj) {
+    for ( const [, inst] of Object.entries(this.#accessory_insts) ) {
+      inst.received_aux_message(topic, message_obj);
+    }
+  }
+
+  /**
+   * identifies the accessory associated with a topic, by calling each accessory instance's "identify"
+   * static method
+   * @param {string} topic
+   * @param {*} message_obj
+   * @returns {{mqtt_id: string, accessory_name: string, cls: unknown}}
+   */
   #identify_accessory(topic, message_obj) {
     for ( const [accessory_name, cls] of Object.entries(this.#accessories_manager.accessories) ) {
       const ident_result = cls.identify(topic, message_obj); // if match, should return {mqtt_id:STR}
@@ -86,23 +104,37 @@ class CocoaHomePlatform extends MqttClient {
     if ( ! this.#accessory_insts ) {
       this.#accessory_insts = {};
     }
+    // we expect to receive 2 types of messages
+    // 1. primary accessory status message (to be identified by each accessory class' static identify() method
+    //    these are accessory status update messages. topic should include the mqtt-id of the accesosry
+    // 2. auxiliary messages. for example, thermostat may require temperature update from another device
+    //    these are consumed by each accessory instance's received_aux_message methhod
     const ident = this.#identify_accessory(topic, message_obj);
+    this.#send_aux_message(topic, message_obj);
     if ( ! ident ) {
       return;
     }
-
     const {accessory_name, mqtt_id, cls} = ident;
     const ai_key = `${accessory_name}:${mqtt_id}`;
     const unique_id = `cocoa-home-platform:${accessory_name}:${mqtt_id}`;
-    this.log.debug(`ai_key=${ai_key} ; unique_id=${unique_id}`);
+
+    const accessory_config = this.#get_accessory_config(accessory_name)?.[mqtt_id] ?? {};
 
     if ( ! this.#accessory_insts[ai_key] ) {
-      this.log.info(`[discover] preparing ${ai_key}`);
+      this.log.debug(`🟪 accessory_name: ${accessory_name} ; mqtt_id: ${mqtt_id} ; ai_key : ${ai_key} ; unique_id : ${unique_id} ; accessory_config :`, accessory_config);
       const uuid = this.api.hap.uuid.generate(unique_id);
       const existing_accessory = this.#cached_accessories.find(accessory => accessory.UUID === uuid);
       if ( existing_accessory ) {
         this.log.info(`[discover] existing accessory from cache : ${mqtt_id}`);
-        this.#accessory_insts[ai_key] = new cls(this, existing_accessory, this.log, this);
+        this.#accessory_insts[ai_key] = new cls({
+          platform : this,
+          accessory : existing_accessory,
+          homebridge_log : this.log,
+          mqtt_client : this,
+          accessory_config,
+          object_path,
+          mqtt_match,
+        });
       } else {
         // the accessory does not yet exist, so we need to create it
         this.log.info(`[discover] new accessory from cache : ${mqtt_id} with name :`, accessory_name);
@@ -112,10 +144,17 @@ class CocoaHomePlatform extends MqttClient {
         // store a copy of the device object in the `accessory.context`
         // the `context` property can be used to store any data about the accessory you may need
         accessory.context.device = {accessory_name, mqtt_id, topic};
-
         // create the accessory handler for the newly create accessory
         // this is imported from `platformAccessory.ts`
-        this.#accessory_insts[ai_key] = new cls(this, accessory, this.log, this);
+        this.#accessory_insts[ai_key] = new cls({
+          platform : this,
+          accessory,
+          homebridge_log : this.log,
+          matt_client : this,
+          accessory_config,
+          object_path,
+          mqtt_match,
+        });
         // link the accessory to your platform
         this.api.registerPlatformAccessories(settings.PLUGIN_NAME, settings.PLATFORM_NAME, [accessory]);
       }

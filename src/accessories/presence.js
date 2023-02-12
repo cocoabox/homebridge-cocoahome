@@ -14,8 +14,8 @@ class Presence extends BaseAccessory {
   #occupancy_sensor_service;
   #context;
 
-  constructor(platform, accessory, homebridge_log, mqtt_client) {
-    super(platform, accessory, homebridge_log, mqtt_client);
+  constructor({platform, accessory, homebridge_log, mqtt_client}) {
+    super({platform, accessory, homebridge_log, mqtt_client});
     this.#context = accessory.context.device;
 
     this.#accessory_info_service = this.accessory.getService(this.platform.Service.AccessoryInformation);

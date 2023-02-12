@@ -7,17 +7,36 @@ class BaseAccessory {
   #context;
   #pub_topic_suffix;
   #publish_states_springload_secs;
+  #config;
 
-  constructor(platform, accessory, homebridge_log, mqtt_client, pub_topic_suffix = '/set', {springload_sec} = {}) {
+  config() {
+    return this.#config;
+  }
+
+  /**
+   *
+   * @param {object} platform
+   * @param {object} accessory
+   * @param {function} homebridge_log
+   * @param {MqttClient} mqtt_client
+   * @param {string?} pub_topic_suffix
+   * @param {number?} [springload_sec=1]
+   * @param {object?} accessory_config
+   */
+  constructor({platform, accessory, homebridge_log, mqtt_client, pub_topic_suffix, springload_sec, accessory_config} = {}) {
+    pub_topic_suffix = pub_topic_suffix ?? '/set';
+    springload_sec = springload_sec ?? 1;
+    accessory_config = accessory_config ?? {};
+
+    this.#config = accessory_config;
     this.#pub_topic_suffix = pub_topic_suffix;
     this.#state = {};
     this.accessory = accessory;
     this.platform = platform;
     this.#mqtt_client = mqtt_client;
     this.#homebridge_log = homebridge_log;
-    this.#publish_states_springload_secs = springload_sec ?? 1;
+    this.#publish_states_springload_secs = springload_sec;
 
-    const context_device = accessory.context.device ?? {};
     this.#context = accessory.context.device;
   }
 
@@ -94,6 +113,14 @@ class BaseAccessory {
 
   received_mqtt_message(msg) {
     this.#state = Object.assign(this.#state ?? {}, msg);
+  }
+
+  received_aux_message(topic) {
+    return false;
+  }
+
+  received_aux_message(topic, message) {
+
   }
 
   // utility functions

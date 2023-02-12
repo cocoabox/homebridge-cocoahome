@@ -31,8 +31,8 @@ class SwitchbotCurtainAccessory extends BaseAccessory {
   #accessory_info_service;
   #light_level_history;
 
-  constructor(platform, accessory, homebridge_log, mqtt_client) {
-    super(platform, accessory, homebridge_log, mqtt_client);
+  constructor({platform, accessory, homebridge_log, mqtt_client}) {
+    super({platform, accessory, homebridge_log, mqtt_client});
 
     this.#light_level_history = new FifoArray(50);
 

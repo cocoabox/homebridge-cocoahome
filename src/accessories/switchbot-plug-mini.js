@@ -32,8 +32,8 @@ class SwitchbotPlugMiniAccessory extends BaseAccessory {
   #service_label_service;
   #accessory_info_service;
 
-  constructor(platform, accessory, homebridge_log, mqtt_client) {
-    super(platform, accessory, homebridge_log, mqtt_client);
+  constructor({platform, accessory, homebridge_log, mqtt_client}) {
+    super({platform, accessory, homebridge_log, mqtt_client});
 
     this.#accessory_info_service = this.accessory.getService(this.platform.Service.AccessoryInformation);
     this.#accessory_info_service

@@ -26,13 +26,30 @@ const BaseAccessory = require('../base-accessory');
 //     "odour_reduction": true
 // }
 //
+// need additional config:
+//
+//   "subscribe": [
+//      "sb2m/SENSOR_NAME"
+//      ],
+//
+//   "accessory_config" : {
+//      "national-aircond" : {
+//        "AIRCOND_MQTT_ID": {
+//          current_temp_topic: "sb2m/SENSOR_NAME",
+//          current_temp_object_path: "serviceData.temperature.c",
+//        }
+//      }
+//    }
+
 class NationalAircondAccessory extends BaseAccessory {
   #heater_cooler_service;
   #thermostat_service;
   #dry_switch_service;
+  #object_path;
 
-  constructor(platform, accessory, homebridge_log, mqtt_client) {
-    super(platform, accessory, homebridge_log, mqtt_client, '/set');
+  constructor({platform, accessory, homebridge_log, mqtt_client, accessory_config, object_path}) {
+    super({platform, accessory, homebridge_log, mqtt_client, accessory_config});
+    this.#object_path = object_path;
 
     this.accessory.getService(this.platform.Service.AccessoryInformation)
       .setCharacteristic(this.platform.Characteristic.Manufacturer, 'National')
@@ -311,9 +328,39 @@ class NationalAircondAccessory extends BaseAccessory {
     }
   }
 
+  #current_temp;
+
+  received_aux_message(topic, message_obj) {
+    const current_temp_topic = this.config()?.current_temp_topic;
+    const current_temp_object_path = this.config()?.current_temp_object_path;
+    if ( current_temp_topic && topic === current_temp_topic ) {
+      this.#current_temp = current_temp_object_path
+        ? this.#object_path.get(message_obj, current_temp_object_path)
+        : typeof message_obj === 'number' ? message_obj : null;
+      if ( typeof this.#current_temp === 'number' ) {
+        this.#current_temp = Math.round(this.#current_temp);
+        // this.say('🌡️', this.mqtt_id, this.#current_temp);
+        this.#set_hap_temps(this.#current_temp, this.#current_temp);
+        return true;
+      }
+    }
+  }
+
+  #set_hap_temps(hc_cur_temp, th_cur_temp, th_tar_temp = null) {
+    this.say(`[${this.mqtt_id}] set_hap_temps :`, {hc_cur_temp, th_cur_temp, th_tar_temp});
+    this.#heater_cooler_service.updateCharacteristic(
+      this.platform.Characteristic.CurrentTemperature, hc_cur_temp);
+    this.#thermostat_service.updateCharacteristic(
+      this.platform.Characteristic.CurrentTemperature, th_cur_temp);
+    if ( typeof th_tar_temp === 'number' ) {
+      this.#thermostat_service.updateCharacteristic(
+        this.platform.Characteristic.TargetTemperature, th_tar_temp);
+    }
+  }
+
   received_mqtt_message(msg) {
     super.received_mqtt_message(msg);
-    this.say('❄️  aircond message received :', msg);
+    this.say(`[${this.mqtt_id}] ❄️ aircond message received :`, msg);
 
     const set_hap_states =
       (hc_active, hc_cur_state, hc_tar_state, th_cur_state, th_tar_state) => {
@@ -334,17 +381,9 @@ class NationalAircondAccessory extends BaseAccessory {
           this.platform.Characteristic.TargetHeatingCoolingState,
           this.platform.Characteristic.TargetHeatingCoolingState[th_tar_state]);
       };
-    const set_hap_temps = (hc_cur_temp, th_cur_temp, th_tar_temp) => {
-      this.say('set_hap_temps :', {hc_cur_temp, th_cur_temp, th_tar_temp});
-      this.#heater_cooler_service.updateCharacteristic(
-        this.platform.Characteristic.CurrentTemperature, hc_cur_temp);
-      this.#thermostat_service.updateCharacteristic(
-        this.platform.Characteristic.CurrentTemperature, th_cur_temp);
-      this.#thermostat_service.updateCharacteristic(
-        this.platform.Characteristic.TargetTemperature, th_tar_temp);
-    };
+
     const set_hap_sw = (dry) => {
-      this.say('set_hap_sw :', {dry});
+      this.say(`[${this.mqtt_id}] set_hap_sw :`, {dry});
       this.#dry_switch_service.updateCharacteristic(
         this.platform.Characteristic.On, dry);
     };
@@ -399,12 +438,7 @@ class NationalAircondAccessory extends BaseAccessory {
       // 温度
       if ( 'temp' in (msg?.state ?? {}) ) {
         const temp = Math.round(msg.state.temp);
-        this.#heater_cooler_service.updateCharacteristic(
-          this.platform.Characteristic.CurrentTemperature, temp);
-        this.#thermostat_service.updateCharacteristic(
-          this.platform.Characteristic.CurrentTemperature, temp);
-        this.#thermostat_service.updateCharacteristic(
-          this.platform.Characteristic.TargetTemperature, temp);
+        this.#set_hap_temps(this.#current_temp ?? temp, this.#current_temp ?? temp, temp);
       }
     }
 

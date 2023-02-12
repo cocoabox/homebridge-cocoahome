@@ -31,8 +31,8 @@ class SharpAircondAccessory extends BaseAccessory {
   #dry_switch_service;
   #indoor_drying_switch_service;
 
-  constructor(platform, accessory, homebridge_log, mqtt_client) {
-    super(platform, accessory, homebridge_log, mqtt_client, '/set');
+  constructor({platform, accessory, homebridge_log, mqtt_client, config} = {}) {
+    super({platform, accessory, homebridge_log, mqtt_client, config});
 
     this.accessory.getService(this.platform.Service.AccessoryInformation)
       .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Sharp')
@@ -241,7 +241,7 @@ class SharpAircondAccessory extends BaseAccessory {
       strength = 'auto';
     }
     strength = Math.round(this.constructor.convert_range(speed, [1, 100], [1, 4]));
-    this.say(`💨 set strength: HAP:${speed} --> mqtt:${strength}`);
+    this.say(`[${this.mqtt_id}] 💨 set strength: HAP:${speed} --> mqtt:${strength}`);
     this.set_states({strength});
   }
 
@@ -313,9 +313,38 @@ class SharpAircondAccessory extends BaseAccessory {
     }
   }
 
+  #current_temp;
+
+  received_aux_message(topic, message_obj) {
+    const current_temp_topic = this.config()?.current_temp_topic;
+    const current_temp_object_path = this.config()?.current_temp_object_path;
+    if ( current_temp_topic && topic === current_temp_topic ) {
+      this.#current_temp = current_temp_object_path
+        ? this.#object_path.get(message_obj, current_temp_object_path)
+        : typeof message_obj === 'number' ? message_obj : null;
+      if ( typeof this.#current_temp === 'number' ) {
+        this.#current_temp = Math.round(this.#current_temp);
+        this.#set_hap_temps(this.#current_temp, this.#current_temp);
+        return true;
+      }
+    }
+  }
+
+  #set_hap_temps(hc_cur_temp, th_cur_temp, th_tar_temp = null) {
+    this.say(`[${this.mqtt_id}] set_hap_temps :`, {hc_cur_temp, th_cur_temp, th_tar_temp});
+    this.#heater_cooler_service.updateCharacteristic(
+      this.platform.Characteristic.CurrentTemperature, hc_cur_temp);
+    this.#thermostat_service.updateCharacteristic(
+      this.platform.Characteristic.CurrentTemperature, th_cur_temp);
+    if ( typeof th_tar_temp === 'number' ) {
+      this.#thermostat_service.updateCharacteristic(
+        this.platform.Characteristic.TargetTemperature, th_tar_temp);
+    }
+  }
+
   received_mqtt_message(msg) {
     super.received_mqtt_message(msg);
-    this.say('❄️  aircond message received :', msg);
+    this.say(`[${this.mqtt_id}] ❄️ aircond message received :`, msg);
 
     const set_hap_states =
       // hc_active = heater/cooler active
@@ -351,7 +380,7 @@ class SharpAircondAccessory extends BaseAccessory {
         this.platform.Characteristic.TargetTemperature, th_tar_temp);
     };
     const set_hap_sw = (dry, indoor_drying) => {
-      this.say('set_hap_sw :', {dry, indoor_drying});
+      this.say(`[${this.mqtt_id}] set_hap_sw :`, {dry, indoor_drying});
       this.#dry_switch_service.updateCharacteristic(
         this.platform.Characteristic.On, dry);
       this.#indoor_drying_switch_service.updateCharacteristic(
@@ -405,12 +434,7 @@ class SharpAircondAccessory extends BaseAccessory {
       // 温度
       if ( 'temp' in (msg?.state ?? {}) ) {
         const temp = Math.round(msg.state.temp);
-        this.#heater_cooler_service.updateCharacteristic(
-          this.platform.Characteristic.CurrentTemperature, temp);
-        this.#thermostat_service.updateCharacteristic(
-          this.platform.Characteristic.CurrentTemperature, temp);
-        this.#thermostat_service.updateCharacteristic(
-          this.platform.Characteristic.TargetTemperature, temp);
+        this.#set_hap_temps(this.#current_temp ?? temp, this.#current_temp ?? temp, temp);
       }
     }
 
