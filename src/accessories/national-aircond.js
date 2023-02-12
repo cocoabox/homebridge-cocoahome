@@ -85,7 +85,7 @@ class NationalAircondAccessory extends BaseAccessory {
 
     this.#thermostat_service.getCharacteristic(this.platform.Characteristic.TargetTemperature)
       .onGet(this.thermostat_get_target_temperatore.bind(this))
-      .onSet(this.thermostat_set_target_temperatore.bind(this));
+      .onSet(this.thermostat_set_target_temperature.bind(this));
 
     this.#thermostat_service.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
       .onGet(this.common_get_temperature_display_units.bind(this));
@@ -129,6 +129,8 @@ class NationalAircondAccessory extends BaseAccessory {
     this.#heater_cooler_service.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
       .onGet(this.common_get_temperature_display_units.bind(this));
     // ^ this.platform.Characteristic.TemperatureDisplayUnits.{CELSIUS|FAHRENHEIT}
+
+    this.say('creating aircond', {mqtt_id : this.mqtt_id, accessory_config});
   }
 
   common_get_current_temperature() {
@@ -143,7 +145,8 @@ class NationalAircondAccessory extends BaseAccessory {
     return Math.round(this.state?.temp);
   }
 
-  thermostat_set_target_temperatore(temp) {
+  thermostat_set_target_temperature(temp) {
+    this.say('thermostat_set_target_temperature : temp', temp);
     this.set_states({temp : Math.round(temp)});
   }
 
@@ -153,7 +156,7 @@ class NationalAircondAccessory extends BaseAccessory {
       return this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
     }
     return {
-      ion : this.platform.Characteristic.CurrentHeatingCoolingState.COOL,
+      auto : this.platform.Characteristic.CurrentHeatingCoolingState.AUTO,
       cool : this.platform.Characteristic.CurrentHeatingCoolingState.COOL,
       warm : this.platform.Characteristic.CurrentHeatingCoolingState.HEAT,
     }[this.state?.mode];
@@ -172,9 +175,10 @@ class NationalAircondAccessory extends BaseAccessory {
     const mode_obj = {
       [this.platform.Characteristic.CurrentHeatingCoolingState.COOL] : {mode : 'cool'},
       [this.platform.Characteristic.CurrentHeatingCoolingState.HEAT] : {mode : 'warm'},
-      [this.platform.Characteristic.CurrentHeatingCoolingState.AUTO] : {},
+      [this.platform.Characteristic.CurrentHeatingCoolingState.AUTO] : {mode : 'auto'},
     }[cooling_state] ?? {};
     const final_state = Object.assign({}, power_obj, mode_obj);
+    this.say('thermostat_set_target_heating_cooling_state : final_state', final_state);
     this.set_states(final_state);
   }
 
@@ -334,11 +338,12 @@ class NationalAircondAccessory extends BaseAccessory {
     const current_temp_topic = this.config()?.current_temp_topic;
     const current_temp_object_path = this.config()?.current_temp_object_path;
     if ( current_temp_topic && topic === current_temp_topic ) {
+      const round_half = (num) => Math.round(num * 2) / 2;
       this.#current_temp = current_temp_object_path
         ? this.#object_path.get(message_obj, current_temp_object_path)
         : typeof message_obj === 'number' ? message_obj : null;
       if ( typeof this.#current_temp === 'number' ) {
-        this.#current_temp = Math.round(this.#current_temp);
+        this.#current_temp = round_half(this.#current_temp);
         // this.say('🌡️', this.mqtt_id, this.#current_temp);
         this.#set_hap_temps(this.#current_temp, this.#current_temp);
         return true;

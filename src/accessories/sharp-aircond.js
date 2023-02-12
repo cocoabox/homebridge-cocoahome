@@ -30,9 +30,11 @@ class SharpAircondAccessory extends BaseAccessory {
   #thermostat_service;
   #dry_switch_service;
   #indoor_drying_switch_service;
+  #object_path;
 
-  constructor({platform, accessory, homebridge_log, mqtt_client, config} = {}) {
-    super({platform, accessory, homebridge_log, mqtt_client, config});
+  constructor({platform, accessory, homebridge_log, mqtt_client, accessory_config, object_path} = {}) {
+    super({platform, accessory, homebridge_log, mqtt_client, accessory_config});
+    this.#object_path = object_path;
 
     this.accessory.getService(this.platform.Service.AccessoryInformation)
       .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Sharp')
@@ -74,8 +76,8 @@ class SharpAircondAccessory extends BaseAccessory {
       .onGet(this.common_get_current_temperature.bind(this));
 
     this.#thermostat_service.getCharacteristic(this.platform.Characteristic.TargetTemperature)
-      .onGet(this.thermostat_get_target_temperatore.bind(this))
-      .onSet(this.thermostat_set_target_temperatore.bind(this));
+      .onGet(this.thermostat_get_target_temperature.bind(this))
+      .onSet(this.thermostat_set_target_temperature.bind(this));
 
     this.#thermostat_service.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
       .onGet(this.common_get_temperature_display_units.bind(this));
@@ -119,6 +121,8 @@ class SharpAircondAccessory extends BaseAccessory {
     this.#heater_cooler_service.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
       .onGet(this.common_get_temperature_display_units.bind(this));
     // ^ this.platform.Characteristic.TemperatureDisplayUnits.{CELSIUS|FAHRENHEIT}
+
+    this.say('creating aircond', {mqtt_id : this.mqtt_id, accessory_config});
   }
 
   common_get_current_temperature() {
@@ -129,11 +133,12 @@ class SharpAircondAccessory extends BaseAccessory {
     return this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS;
   }
 
-  thermostat_get_target_temperatore() {
+  thermostat_get_target_temperature() {
     return Math.round(this.state?.temp);
   }
 
-  thermostat_set_target_temperatore(temp) {
+  thermostat_set_target_temperature(temp) {
+    this.say('thermostat_set_target_temperature : temp', temp);
     this.set_states({temp : Math.round(temp)});
   }
 
@@ -165,6 +170,7 @@ class SharpAircondAccessory extends BaseAccessory {
       [this.platform.Characteristic.CurrentHeatingCoolingState.AUTO] : {},
     }[cooling_state] ?? {};
     const final_state = Object.assign({}, power_obj, mode_obj);
+    this.say('thermostat_set_target_heating_cooling_state : final_state', final_state);
     this.set_states(final_state);
   }
 
@@ -319,11 +325,12 @@ class SharpAircondAccessory extends BaseAccessory {
     const current_temp_topic = this.config()?.current_temp_topic;
     const current_temp_object_path = this.config()?.current_temp_object_path;
     if ( current_temp_topic && topic === current_temp_topic ) {
+      const round_half = (num) => Math.round(num * 2) / 2;
       this.#current_temp = current_temp_object_path
         ? this.#object_path.get(message_obj, current_temp_object_path)
         : typeof message_obj === 'number' ? message_obj : null;
       if ( typeof this.#current_temp === 'number' ) {
-        this.#current_temp = Math.round(this.#current_temp);
+        this.#current_temp = round_half(this.#current_temp);
         this.#set_hap_temps(this.#current_temp, this.#current_temp);
         return true;
       }
